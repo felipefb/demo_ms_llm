@@ -1,0 +1,34 @@
+id: "packaging_docs"
+name: "Agente 7 — Docker, DX e documentação final"
+description: "Empacota (Dockerfile multi-stage) e documenta o projeto para entrega (README)."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.2
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "packaging"
+  - "documentation"
+  - "developer_experience"
+
+tools:
+  allow:
+    - "filesystem"
+    - "shell"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 6
+  depends_on: ["quality_ci", "cloud_architecture", "cloud_observability", "database_rationale", "resilience_design"]
+
+constraints:
+  max_steps: 20
+  token_budget: 20000

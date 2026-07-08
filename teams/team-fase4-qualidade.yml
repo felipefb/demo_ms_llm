@@ -1,0 +1,50 @@
+# Time — Fase 4: Qualidade, testes e CI
+# Builder único (quality_ci); validação por security_hardening (jobs de segurança
+# no CI) e final_reviewer (gate de consistência geral).
+id: team-fase4-qualidade
+name: Fase 4 Qualidade Squad
+topology: manager_dispatch
+
+manager:
+  agent_ref: final_reviewer@main
+  orchestrator_instructions: |
+    - Builder executa; validadores revisam; loop de ajustes, máx. 3 rodadas.
+    - Entregas e vereditos em shared/memory/fase4_board.md (apenas acréscimos).
+    - Fase encerra com todos APROVADO + make lint typecheck test security verde
+      local + cobertura >= 80% nas camadas core.
+  config:
+    max_steps: 24
+    routing_mode: build_review_loop
+    synthesis_mode: final_report
+
+members:
+  - id: quality_ci
+    agent_ref: quality_ci@main
+    role: builder
+    owns:
+      - Makefile
+      - .github/**
+      - tests/load/**
+      - pyproject.toml (seções de lint/mypy/cov)
+  - id: security_hardening
+    agent_ref: security_hardening@main
+    role: validator
+    review_focus: "Jobs bandit/pip-audit no CI; segredos não vazam em workflow; permissões mínimas do Actions."
+  - id: final_reviewer
+    agent_ref: final_reviewer@main
+    role: validator
+    review_focus: "Makefile e CI consistentes com o repo real; cobertura reportada; sem promessas quebradas."
+
+runtime:
+  max_parallel: 2
+  timeout_seconds: 2400
+
+memory:
+  shared: true
+  scope: team
+  store: filesystem
+  board: shared/memory/fase4_board.md
+
+policies:
+  pii_mode: redact
+  tool_allowlist_enforced: true

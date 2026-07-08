@@ -1,0 +1,36 @@
+id: "cloud_architecture"
+name: "Agente 8 — Arquitetura cloud native + escalonamento"
+description: "Produz docs/architecture.md (seção 1) com desenho AWS e proposta de escalonamento."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.3
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "architecture"
+  - "aws"
+  - "documentation"
+  - "diagrams_as_code"
+
+tools:
+  allow:
+    - "filesystem"
+    - "shell"
+    - "web_search"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 5
+  depends_on: ["quality_ci"]
+
+constraints:
+  max_steps: 16
+  token_budget: 18000

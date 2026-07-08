@@ -1,0 +1,35 @@
+id: "app_observability"
+name: "Agente 5 — Observabilidade da aplicação"
+description: "Instrumenta logging estruturado, métricas Prometheus e tracing OpenTelemetry."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.2
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "observability"
+  - "coding"
+  - "metrics"
+  - "tracing"
+
+tools:
+  allow:
+    - "filesystem"
+    - "shell"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 3
+  depends_on: ["persistence", "llm_integration"]
+
+constraints:
+  max_steps: 20
+  token_budget: 20000

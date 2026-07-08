@@ -1,0 +1,28 @@
+# Só o necessário entra no contexto de build (app/, migrations/, alembic.ini,
+# requirements.txt). Tudo abaixo fica de fora.
+.git
+.github
+.venv
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+tests/
+docs/
+observability/
+agents/
+teams/
+shared/
+conf/
+Makefile
+README.md
+LICENSE
+AGENT_PROMPTS.md
+requirements-dev.txt
+docker-compose.yml
+Dockerfile

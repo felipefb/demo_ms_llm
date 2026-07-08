@@ -1,0 +1,61 @@
+# Time — Desafio Técnico Itaú (micro-serviço LLM)
+# Pipeline em fases com paralelismo dentro da fase (ver execution.phase de cada agente).
+id: team-itau-challenge
+name: Itau MS Challenge Squad
+topology: pipeline
+
+manager:
+  agent_ref: final_reviewer@main   # revisor atua como gate de qualidade ao final
+  orchestrator_instructions: |
+    - Execute as fases em ordem; dentro de uma fase os agentes podem rodar em paralelo.
+    - Cada agente aplica o Contexto Base (shared/context/base_context.md) antes da tarefa.
+    - Um agente só inicia quando todos os depends_on concluírem com critérios de aceite verdes.
+    - Nenhum segredo pode ser commitado; falha de aceite bloqueia a fase seguinte.
+  config:
+    max_steps: 24
+    routing_mode: sequential_phases
+    synthesis_mode: final_report
+
+phases:
+  - phase: 1
+    members: [api_scaffold]
+  - phase: 2
+    members: [persistence, llm_integration]        # paralelo
+  - phase: 3
+    members: [security_hardening, app_observability] # paralelo
+  - phase: 4
+    members: [quality_ci]
+  - phase: 5
+    members: [cloud_architecture, cloud_observability, database_rationale, resilience_design] # paralelo (só docs)
+  - phase: 6
+    members: [packaging_docs]
+  - phase: 7
+    members: [final_reviewer]
+
+members:
+  - { id: api_scaffold,        agent_ref: api_scaffold@main,        enabled: true }
+  - { id: persistence,         agent_ref: persistence@main,         enabled: true }
+  - { id: llm_integration,     agent_ref: llm_integration@main,     enabled: true }
+  - { id: security_hardening,  agent_ref: security_hardening@main,  enabled: true }
+  - { id: app_observability,   agent_ref: app_observability@main,   enabled: true }
+  - { id: quality_ci,          agent_ref: quality_ci@main,          enabled: true }
+  - { id: packaging_docs,      agent_ref: packaging_docs@main,      enabled: true }
+  - { id: cloud_architecture,  agent_ref: cloud_architecture@main,  enabled: true }
+  - { id: cloud_observability, agent_ref: cloud_observability@main, enabled: true }
+  - { id: database_rationale,  agent_ref: database_rationale@main,  enabled: true }
+  - { id: resilience_design,   agent_ref: resilience_design@main,   enabled: true }
+  - { id: final_reviewer,      agent_ref: final_reviewer@main,      enabled: true }
+
+runtime:
+  max_parallel: 4
+  timeout_seconds: 1800
+
+memory:
+  shared: true
+  scope: team
+  store: filesystem   # shared/memory/ — sem banco na fase de bootstrap
+
+policies:
+  pii_mode: redact
+  tool_allowlist_enforced: true
+  secrets_in_repo: forbidden

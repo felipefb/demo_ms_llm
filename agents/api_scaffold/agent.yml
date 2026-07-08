@@ -1,0 +1,36 @@
+id: "api_scaffold"
+name: "Agente 1 — Scaffold do serviço e API REST"
+description: "Cria o esqueleto do micro-serviço FastAPI e o endpoint POST /v1/chat."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.2
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "coding"
+  - "api_design"
+  - "testing"
+
+tools:
+  allow:
+    - "filesystem"
+    - "shell"
+  deny:
+    - "network_write"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 1
+  depends_on: []
+
+constraints:
+  max_steps: 20
+  token_budget: 20000

@@ -1,0 +1,35 @@
+id: "security_hardening"
+name: "Agente 4 — Segurança"
+description: "Endurece a segurança do micro-serviço: auth, rate limit, sanitização, segredos."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.1
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "security"
+  - "coding"
+  - "sast"
+  - "testing"
+
+tools:
+  allow:
+    - "filesystem"
+    - "shell"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 3
+  depends_on: ["persistence", "llm_integration"]
+
+constraints:
+  max_steps: 20
+  token_budget: 20000

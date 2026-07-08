@@ -1,0 +1,60 @@
+# Time — Fase 1: Scaffold do serviço e API REST (execução colaborativa)
+# Builder produz; validadores revisam sob a ótica da sua fase futura;
+# builder corrige; ciclo repete até todos os vereditos = APROVADO.
+id: team-fase1-scaffold
+name: Fase 1 Scaffold Squad
+topology: manager_dispatch
+
+manager:
+  agent_ref: final_reviewer@main
+  orchestrator_instructions: |
+    - O builder (api_scaffold) executa a tarefa e registra entregas no quadro
+      de missão (shared/memory/fase1_board.md).
+    - Cada validador revisa o código sob a ótica do seu domínio e registra no
+      quadro: veredito (APROVADO | AJUSTES) + lista objetiva de ajustes.
+    - Vereditos AJUSTES voltam ao builder como nova rodada. Máx. 3 rodadas.
+    - Fase 1 só encerra quando TODOS os validadores registrarem APROVADO e
+      pytest estiver verde.
+  config:
+    max_steps: 24
+    routing_mode: build_review_loop
+    synthesis_mode: final_report
+
+members:
+  - id: api_scaffold        # builder
+    agent_ref: api_scaffold@main
+    role: builder
+  - id: persistence         # valida: interface do repositório pronta p/ Fase 2
+    agent_ref: persistence@main
+    role: validator
+    review_focus: "Interface do repositório (in-memory) permite plugar SQLAlchemy sem refatorar endpoints?"
+  - id: llm_integration     # valida: ponto de acoplamento do provider LLM
+    agent_ref: llm_integration@main
+    role: validator
+    review_focus: "Serviço de chat isola a chamada LLM atrás de abstração mockável? /ready prevê checagem de saída?"
+  - id: security_hardening  # valida: base segura (envelope de erro, validação, .env)
+    agent_ref: security_hardening@main
+    role: validator
+    review_focus: "Validação estrita, envelope de erro sem vazamento, .env.example sem segredos, limites de input."
+  - id: app_observability   # valida: request_id propagável a logs/métricas
+    agent_ref: app_observability@main
+    role: validator
+    review_focus: "Middleware de request_id pronto p/ correlação; latency_ms medido; pontos de instrumentação claros."
+  - id: quality_ci          # valida: testes de contrato e qualidade do código
+    agent_ref: quality_ci@main
+    role: validator
+    review_focus: "Testes de contrato cobrem casos exigidos; estrutura testável; sem chamadas externas em teste."
+
+runtime:
+  max_parallel: 5
+  timeout_seconds: 1800
+
+memory:
+  shared: true
+  scope: team
+  store: filesystem
+  board: shared/memory/fase1_board.md
+
+policies:
+  pii_mode: redact
+  tool_allowlist_enforced: true

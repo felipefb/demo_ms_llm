@@ -1,0 +1,34 @@
+id: "database_rationale"
+name: "Agente 10 — Justificativa da escolha do banco"
+description: "Escreve a seção Banco de Dados de docs/architecture.md com comparação e veredito."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.3
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "database"
+  - "architecture"
+  - "documentation"
+
+tools:
+  allow:
+    - "filesystem"
+    - "web_search"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 5
+  depends_on: ["quality_ci"]
+
+constraints:
+  max_steps: 10
+  token_budget: 12000

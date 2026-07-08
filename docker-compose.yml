@@ -1,0 +1,105 @@
+# Variáveis lidas do ambiente/arquivo .env (copie .env.example -> .env):
+#   POSTGRES_PASSWORD  senha do postgres (padrão dev: postgres)
+#   POSTGRES_PORT      porta do postgres no host, em bind local (padrão 5432)
+#   APP_PORT           porta da API no host (padrão 8000)
+#   API_KEY_HASH       hash SHA-256 da API key aceita (veja .env.example)
+#   OPENROUTER_API_KEY / GEMINI_API_KEY  chaves dos providers LLM
+#   LOG_FORMAT / OTEL_ENABLED / OTEL_EXPORTER_OTLP_ENDPOINT  observabilidade
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      # Parametrizável por env; o padrão só serve para dev local.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: itau_ms
+    ports:
+      # Bind apenas em loopback: o banco não fica exposto na rede local.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d itau_ms"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/itau_ms
+      REPOSITORY_BACKEND: postgres
+      # Auth: hash SHA-256 da key (vazio = auth desabilitada, só permitido em dev)
+      API_KEY_HASH: ${API_KEY_HASH:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-changeme}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-changeme}
+      # Modelos dos providers — definidos no .env; defaults espelham app/core/config.py
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      # Seleção automática de modelos via catálogo dos providers (ver .env.example)
+      LLM_AUTO_MODEL: ${LLM_AUTO_MODEL:-true}
+      LLM_MODEL_REFRESH_SECONDS: ${LLM_MODEL_REFRESH_SECONDS:-3600}
+      # Grounding com busca web para respostas com dados atuais (cotações etc.)
+      LLM_WEB_SEARCH: ${LLM_WEB_SEARCH:-false}
+      # Roteamento por custo: modelos leves p/ response_mode=direct + tetos de tokens
+      OPENROUTER_MODEL_DIRECT: ${OPENROUTER_MODEL_DIRECT:-}
+      GEMINI_MODEL_DIRECT: ${GEMINI_MODEL_DIRECT:-}
+      LLM_DIRECT_MAX_TOKENS: ${LLM_DIRECT_MAX_TOKENS:-256}
+      LLM_DETAILED_MAX_TOKENS: ${LLM_DETAILED_MAX_TOKENS:-1024}
+      LLM_CACHE_TTL_SECONDS: ${LLM_CACHE_TTL_SECONDS:-60}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      # Tracing: ligue com OTEL_ENABLED=true (Jaeger sobe no perfil observability).
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    # Migrations rodam automaticamente antes do servidor subir.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  # --- Perfil opcional de observabilidade -----------------------------------
+  # docker compose --profile observability up
+  # Prometheus: http://localhost:9090 | Grafana: http://localhost:3000 (admin/admin)
+  # Jaeger UI:  http://localhost:16686 (exige OTEL_ENABLED=true no app)
+  # ATENCAO: perfil SOMENTE para desenvolvimento local — credenciais padrão
+  # (admin/admin) e portas publicadas sem autenticação. Não usar em ambiente exposto.
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ["observability"]
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    profiles: ["observability"]
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.58
+    profiles: ["observability"]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"  # UI
+      - "127.0.0.1:4318:4318"    # OTLP/HTTP
+
+volumes:
+  pgdata:

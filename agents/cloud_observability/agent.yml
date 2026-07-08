@@ -1,0 +1,35 @@
+id: "cloud_observability"
+name: "Agente 9 — Observabilidade na nuvem"
+description: "Escreve a seção Observabilidade de docs/architecture.md (AWS-native, SLOs, alarmes)."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.3
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "observability"
+  - "aws"
+  - "documentation"
+  - "sre"
+
+tools:
+  allow:
+    - "filesystem"
+    - "web_search"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 5
+  depends_on: ["quality_ci"]
+
+constraints:
+  max_steps: 12
+  token_budget: 15000

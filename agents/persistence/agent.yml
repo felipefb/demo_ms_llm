@@ -1,0 +1,37 @@
+id: "persistence"
+name: "Agente 2 — Persistência (PostgreSQL)"
+description: "Implementa a camada de persistência dos prompts e respostas em PostgreSQL."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.2
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "coding"
+  - "database"
+  - "migrations"
+  - "testing"
+
+tools:
+  allow:
+    - "filesystem"
+    - "shell"
+    - "sql_read"
+    - "sql_write"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 2
+  depends_on: ["api_scaffold"]
+
+constraints:
+  max_steps: 20
+  token_budget: 20000

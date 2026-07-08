@@ -1,0 +1,34 @@
+id: "final_reviewer"
+name: "Agente 12 — Revisor final"
+description: "Revisão final de entrega: checklist requisito→evidência, ambiente limpo, consistência."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.1
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "review"
+  - "qa_audit"
+  - "release_readiness"
+
+tools:
+  allow:
+    - "filesystem"
+    - "shell"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 7
+  depends_on: ["packaging_docs"]
+
+constraints:
+  max_steps: 20
+  token_budget: 20000

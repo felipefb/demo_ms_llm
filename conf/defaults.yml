@@ -1,0 +1,25 @@
+# conf/defaults.yml — Parâmetros globais da estrutura de agentes
+# Fallbacks globais; o YAML do time (teams/*.yml) pode sobrescrever qualquer chave.
+
+manager:
+  default_temperature: 0.2
+  default_max_steps: 20
+
+agents:
+  default_autonomy_level: "L3"
+  default_token_budget: 20000
+
+execution:
+  max_parallel: 4
+  phase_gate: acceptance_criteria   # fase seguinte só abre com aceite verde
+  on_failure: halt_phase
+
+memory:
+  shared_dir: "shared/memory"
+  max_items: 8
+  max_chars: 2200
+
+policies:
+  pii_mode: redact
+  secrets_in_repo: forbidden
+  require_tests_green: true

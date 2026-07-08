@@ -1,0 +1,34 @@
+id: "quality_ci"
+name: "Agente 6 — Qualidade, testes e CI"
+description: "Garante a régua de qualidade: lint, tipos, cobertura, CI e teste de carga."
+version: "1.0.0"
+
+model:
+  provider: "llm_agent"
+  deployment: "default"
+  temperature: 0.1
+
+prompts:
+  system_path: "system.md"
+  context_paths:
+    - "shared/context/base_context.md"
+
+capabilities:
+  - "testing"
+  - "ci_cd"
+  - "code_quality"
+
+tools:
+  allow:
+    - "filesystem"
+    - "shell"
+
+autonomy_level: "L3"
+
+execution:
+  phase: 4
+  depends_on: ["security_hardening", "app_observability"]
+
+constraints:
+  max_steps: 20
+  token_budget: 20000

@@ -1,0 +1,54 @@
+# Time — Fase 5: Desenho de Arquitetura AWS (4 builders de docs em paralelo)
+# Cada agente é dono da sua seção em docs/architecture/; o cloud_architecture
+# também cria o docs/architecture.md (índice + seção 1 + diagramas).
+id: team-fase5-arquitetura
+name: Fase 5 Arquitetura Squad
+topology: manager_dispatch
+
+manager:
+  agent_ref: final_reviewer@main
+  orchestrator_instructions: |
+    - 4 builders em paralelo, seções disjuntas; consistência com o código real
+      da Parte 1 é critério de aceite (env vars, métricas, endpoints citados existem).
+    - Entregas e vereditos em shared/memory/fase5_board.md (apenas acréscimos).
+    - Validação: revisão cruzada em anel (8→9→10→11→8) focada em consistência
+      entre seções + final_reviewer confere aderência ao código.
+  config:
+    max_steps: 24
+    routing_mode: build_review_loop
+    synthesis_mode: final_report
+
+members:
+  - id: cloud_architecture
+    agent_ref: cloud_architecture@main
+    role: builder
+    owns: [docs/architecture.md, docs/architecture/01_arquitetura_escalonamento.md, docs/diagrams/**]
+  - id: cloud_observability
+    agent_ref: cloud_observability@main
+    role: builder
+    owns: [docs/architecture/02_observabilidade.md]
+  - id: database_rationale
+    agent_ref: database_rationale@main
+    role: builder
+    owns: [docs/architecture/03_banco_de_dados.md]
+  - id: resilience_design
+    agent_ref: resilience_design@main
+    role: builder
+    owns: [docs/architecture/04_resiliencia.md]
+  - id: final_reviewer
+    agent_ref: final_reviewer@main
+    role: validator
+
+runtime:
+  max_parallel: 4
+  timeout_seconds: 2400
+
+memory:
+  shared: true
+  scope: team
+  store: filesystem
+  board: shared/memory/fase5_board.md
+
+policies:
+  pii_mode: redact
+  tool_allowlist_enforced: true

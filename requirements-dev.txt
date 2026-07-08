@@ -1,0 +1,10 @@
+-r requirements.txt
+pytest>=8.2
+pytest-asyncio>=0.23
+ruff>=0.4
+mypy>=1.10
+respx>=0.21
+testcontainers[postgres]>=4.5  # opcional: testes de integracao com Docker
+bandit>=1.7  # SAST
+pip-audit>=2.7  # auditoria de vulnerabilidades de dependências
+pytest-cov>=5.0  # cobertura de testes

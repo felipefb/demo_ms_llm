@@ -1,0 +1,59 @@
+# Time — Fase 2: Persistência (PostgreSQL) + Integração LLM (execução colaborativa)
+# Dois builders em paralelo com propriedade de arquivos particionada;
+# depois validação cruzada (um revisa o outro) + validadores de apoio.
+id: team-fase2-core
+name: Fase 2 Core Squad
+topology: manager_dispatch
+
+manager:
+  agent_ref: final_reviewer@main
+  orchestrator_instructions: |
+    - Builders trabalham em paralelo no MESMO worktree; respeitar a propriedade
+      de arquivos abaixo. Em arquivos compartilhados (app/main.py, app/api/deps.py),
+      editar apenas a própria seção e reler o arquivo antes de cada edição.
+    - Entregas e vereditos registrados em shared/memory/fase2_board.md.
+    - Validação cruzada: persistence revisa a entrega de llm_integration e vice-versa;
+      security_hardening e quality_ci validam o conjunto. Loop de ajustes, máx. 3 rodadas.
+    - Fase encerra com todos os vereditos APROVADO + pytest verde (sem rede).
+  config:
+    max_steps: 24
+    routing_mode: build_review_loop
+    synthesis_mode: final_report
+
+members:
+  - id: persistence
+    agent_ref: persistence@main
+    role: builder
+    owns:
+      - app/repositories/**
+      - app/models/**
+      - migrations/**
+      - alembic.ini
+      - docker-compose.yml
+      - tests/test_repository*.py
+  - id: llm_integration
+    agent_ref: llm_integration@main
+    role: builder
+    owns:
+      - app/services/**
+      - tests/test_llm*.py
+  - id: security_hardening
+    agent_ref: security_hardening@main
+    role: validator
+  - id: quality_ci
+    agent_ref: quality_ci@main
+    role: validator
+
+runtime:
+  max_parallel: 2
+  timeout_seconds: 2400
+
+memory:
+  shared: true
+  scope: team
+  store: filesystem
+  board: shared/memory/fase2_board.md
+
+policies:
+  pii_mode: redact
+  tool_allowlist_enforced: true

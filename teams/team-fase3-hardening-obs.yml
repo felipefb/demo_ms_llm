@@ -1,0 +1,61 @@
+# Time — Fase 3: Segurança + Observabilidade da aplicação (execução colaborativa)
+# Dois builders em paralelo com propriedade particionada; validação cruzada
+# (um revisa o outro) + persistence/llm_integration e quality_ci como validadores de apoio.
+id: team-fase3-hardening-obs
+name: Fase 3 Hardening & Observability Squad
+topology: manager_dispatch
+
+manager:
+  agent_ref: final_reviewer@main
+  orchestrator_instructions: |
+    - Builders em paralelo no MESMO worktree; respeitar propriedade abaixo.
+      Em arquivos compartilhados (app/main.py, app/core/config.py, .env.example,
+      requirements*.txt), edições cirúrgicas e reler antes de cada edição.
+    - Entregas e vereditos em shared/memory/fase3_board.md (apenas acréscimos).
+    - Validação cruzada: security revisa observability e vice-versa; quality_ci
+      valida o conjunto. Loop de ajustes, máx. 3 rodadas.
+    - Fase encerra com todos APROVADO + pytest verde (sem rede) + bandit/pip-audit
+      sem findings de severidade alta.
+  config:
+    max_steps: 24
+    routing_mode: build_review_loop
+    synthesis_mode: final_report
+
+members:
+  - id: security_hardening
+    agent_ref: security_hardening@main
+    role: builder
+    owns:
+      - app/core/security*.py
+      - app/core/auth*.py
+      - app/core/ratelimit*.py
+      - docs/security.md
+      - tests/test_security*.py
+  - id: app_observability
+    agent_ref: app_observability@main
+    role: builder
+    owns:
+      - app/core/logging.py
+      - app/core/middleware.py
+      - app/core/metrics*.py
+      - app/core/tracing*.py
+      - docs/observability.md
+      - observability/**
+      - tests/test_observability*.py
+  - id: quality_ci
+    agent_ref: quality_ci@main
+    role: validator
+
+runtime:
+  max_parallel: 2
+  timeout_seconds: 2400
+
+memory:
+  shared: true
+  scope: team
+  store: filesystem
+  board: shared/memory/fase3_board.md
+
+policies:
+  pii_mode: redact
+  tool_allowlist_enforced: true
