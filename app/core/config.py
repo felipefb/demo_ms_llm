@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # Cache in-memory de respostas por (prompt, modo): prompts idênticos na
     # janela reutilizam a resposta (latência ms, zero tokens). 0 = desligado.
     llm_cache_ttl_seconds: float = 60.0
+    # Warm-up no startup: uma chamada mínima em background exercita a seleção
+    # de modelos e a auto-cura ANTES do primeiro usuário real (evita que a
+    # primeira requisição pague fallback/descoberta). Não atrasa o boot.
+    llm_warmup: bool = True
     # Seleção automática de modelos: consulta os catálogos dos providers e
     # escolhe o melhor modelo por modo (direct = menor/mais barato elegível;
     # detailed = mais capaz dentro do tier free). Overrides manuais

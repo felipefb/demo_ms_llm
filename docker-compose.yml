@@ -52,6 +52,7 @@ services:
       LLM_DIRECT_MAX_TOKENS: ${LLM_DIRECT_MAX_TOKENS:-256}
       LLM_DETAILED_MAX_TOKENS: ${LLM_DETAILED_MAX_TOKENS:-1024}
       LLM_CACHE_TTL_SECONDS: ${LLM_CACHE_TTL_SECONDS:-60}
+      LLM_WARMUP: ${LLM_WARMUP:-true}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       # Tracing: ligue com OTEL_ENABLED=true (Jaeger sobe no perfil observability).
       OTEL_ENABLED: ${OTEL_ENABLED:-false}
