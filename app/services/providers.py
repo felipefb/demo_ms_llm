@@ -29,8 +29,12 @@ _JSON_CONTRACT = (
     '[string]}. "resposta" e uma unica frase direta com a informacao pedida. '
     'Use "dados" para valores/numeros/itens comparaveis (uma linha por '
     'indicador; omita se nao houver) e SEMPRE preencha "fonte" em cada item. '
-    "Para dados financeiros/cambio, prefira fontes oficiais (ex.: Banco "
-    "Central do Brasil/PTAX) e indique a data de referencia do valor. "
+    "Para taxa de cambio, use SEMPRE a PTAX do Banco Central do Brasil como "
+    "fonte primaria (a parcial intradiaria mais recente de hoje ou, apos as "
+    "13h11, o fechamento), indicando data e horario de referencia; somente "
+    "se a PTAX nao aparecer nas fontes, informe o valor de mercado rotulando "
+    "fonte e horario e diga que a PTAX nao estava disponivel. Para outros "
+    "dados, prefira fontes oficiais e indique a data de referencia. "
     "Para valores de mercado: com o mercado ABERTO, informe o valor MAIS "
     "RECENTE divulgado HOJE (cotacao intradiaria/parcial, ex.: PTAX parcial "
     "do Banco Central), com o horario da ultima atualizacao — nao responda "

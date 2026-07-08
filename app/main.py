@@ -1,5 +1,7 @@
 """App factory (create_app) e lifespan: engine, http client, LLM e middlewares."""
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 import httpx
@@ -22,7 +24,18 @@ from app.repositories.conversations import InMemoryConversationRepository
 from app.repositories.database import create_engine, create_session_factory
 from app.repositories.postgres import PostgresConversationRepository
 from app.services.cache import ResponseCache
-from app.services.resilience import build_llm_client
+from app.services.resilience import ResilientLLMClient, build_llm_client
+
+logger = logging.getLogger("app.llm")
+
+
+async def _warmup_llm(llm: ResilientLLMClient) -> None:
+    """Aquecimento best-effort: exercita seleção/denylist antes do 1º usuário."""
+    try:
+        result = await llm.generate("ping", mode="direct")
+        logger.info("llm warmup ok provider=%s model=%s", result.provider, result.model)
+    except Exception as exc:  # noqa: BLE001 — warmup nunca derruba a app
+        logger.warning("llm warmup failed: %s", exc)
 
 
 @asynccontextmanager
@@ -52,6 +65,9 @@ async def lifespan(app: FastAPI):
     selector = getattr(app.state.llm_client, "model_selector", None)
     if selector is not None:
         await selector.refresh_all()
+    # Warm-up em background (só na cadeia real; nunca em mocks/echo de teste).
+    if settings.llm_warmup and isinstance(app.state.llm_client, ResilientLLMClient):
+        app.state.warmup_task = asyncio.create_task(_warmup_llm(app.state.llm_client))
     # Tracing (OTel) — no-op unless OTEL_ENABLED=true.
     setup_tracing(settings, app=app, engine=app.state.db_engine)
     try:
