@@ -10,6 +10,7 @@ from fastapi import Request
 
 from app.repositories.conversations import ConversationRepository
 from app.services.cache import ResponseCache
+from app.services.guardrail import TopicGuardrail
 from app.services.llm import LLMClient
 
 
@@ -30,3 +31,14 @@ def get_response_cache(request: Request) -> "ResponseCache":
         cache = ResponseCache(get_settings().llm_cache_ttl_seconds)
         request.app.state.response_cache = cache
     return cache
+
+
+def get_guardrail(request: Request) -> TopicGuardrail:
+    guardrail = getattr(request.app.state, "guardrail", None)
+    if guardrail is None:
+        # TestClient sem lifespan (ou provisioning parcial): cria lazy.
+        from app.core.config import get_settings
+
+        guardrail = TopicGuardrail.from_settings(get_settings())
+        request.app.state.guardrail = guardrail
+    return guardrail

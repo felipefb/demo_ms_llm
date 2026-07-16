@@ -1,13 +1,14 @@
 """Rotas /v1: POST /v1/chat e GET /v1/conversations/{user_id}."""
 
+import logging
 import time
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from app.api.deps import get_llm_client, get_repository, get_response_cache
+from app.api.deps import get_guardrail, get_llm_client, get_repository, get_response_cache
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
-from app.core.metrics import llm_cache_hits_total
+from app.core.metrics import guardrail_blocked_total, llm_cache_hits_total
 from app.repositories.conversations import ConversationRepository
 from app.schemas.chat import (
     ChatRequest,
@@ -19,7 +20,10 @@ from app.schemas.chat import (
 )
 from app.services.cache import ResponseCache
 from app.services.formatting import parse_structured_answer
+from app.services.guardrail import TopicGuardrail
 from app.services.llm import LLMClient
+
+logger = logging.getLogger("app.guardrail")
 
 router = APIRouter(prefix="/v1", tags=["chat"])
 
@@ -47,7 +51,9 @@ def _validate_model(model: str | None, settings: Settings) -> None:
     description=(
         "Persiste o prompt (status=pending) ANTES de invocar o LLM "
         "(OpenRouter com fallback para Gemini); em caso de sucesso a interacao "
-        "vira completed, em caso de falha vira failed — o prompt nunca se perde."
+        "vira completed, em caso de falha vira failed — o prompt nunca se perde. "
+        "Temas fora do escopo (ex.: politica, religiao) sao bloqueados pelo "
+        "guardrail antes do LLM e respondidos com status=blocked."
     ),
 )
 async def chat(
@@ -56,6 +62,7 @@ async def chat(
     repo: ConversationRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
     cache: ResponseCache = Depends(get_response_cache),
+    guardrail: TopicGuardrail = Depends(get_guardrail),
 ) -> ChatResponse:
     _validate_model(payload.model, settings)
 
@@ -66,6 +73,46 @@ async def chat(
         model=payload.model,
         metadata=payload.metadata,
     )
+
+    # 1.5. Guardrail de escopo temático: temas divergentes (ex.: política,
+    # religião) recebem resposta controlada SEM tocar cache/LLM. A tentativa
+    # fica auditável (status=blocked) e gera aviso: WARNING no log estruturado
+    # + métrica guardrail_blocked_total{category}.
+    blocked = guardrail.check(payload.prompt)
+    if blocked is not None:
+        guardrail_blocked_total.labels(category=blocked.category).inc()
+        logger.warning(
+            "guardrail: prompt bloqueado category=%s term=%s user_id=%s interaction_id=%s",
+            blocked.category,
+            blocked.term,
+            payload.user_id,
+            record.id,
+        )
+        record = await repo.mark_blocked(
+            record.id,
+            response=settings.guardrail_message,
+            reason=f"guardrail: tema '{blocked.category}' fora do escopo",
+            latency_ms=0.0,
+        )
+        return ChatResponse(
+            id=record.id,
+            user_id=record.user_id,
+            prompt=record.prompt,
+            response=record.response,
+            structured=StructuredResponse(
+                resposta=settings.guardrail_message,
+                contexto=(
+                    "Aviso: tentativa de tema fora do escopo detectada "
+                    f"(categoria: {blocked.category}). A tentativa foi registrada."
+                ),
+            ),
+            model=None,
+            provider=record.provider,
+            status=record.status,
+            usage=None,
+            timestamp=record.updated_at,
+            latency_ms=0.0,
+        )
 
     # 2. Cache com TTL: prompts idênticos na janela reutilizam a resposta —
     # latência de ms e zero tokens (performance com custo controlado).

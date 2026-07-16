@@ -15,6 +15,7 @@ invoca OpenRouter/Gemini e persiste conversas em PostgreSQL.
 | Prompt injection | Instruções maliciosas no prompt do usuário | System prompt fixo definido no servidor (`LLM_SYSTEM_PROMPT`); prompt do usuário sempre como mensagem `user` separada (nunca concatenado a instruções); limite de tamanho |
 | SQL injection | Input do usuário em queries | Exclusivamente ORM SQLAlchemy com bound params; zero interpolação de SQL |
 | Model abuse | Cliente forçando modelos caros/não homologados | Allowlist `ALLOWED_MODELS`; sem allowlist, cliente não pode sobrescrever o modelo |
+| Uso fora do escopo | Prompts sobre temas divergentes (política, religião) | Guardrail de escopo temático: pré-filtro determinístico antes do LLM + reforço no system prompt; tentativa auditável (`status=blocked`), aviso em log WARNING + métrica |
 | Ataques via browser | Clickjacking, sniffing, CORS aberto | Headers de segurança em toda resposta (nosniff, DENY, CSP `default-src 'none'`, no-referrer, no-store); CORS fechado por padrão (`CORS_ALLOWED_ORIGINS=[]`) |
 
 ## Autenticação
@@ -58,6 +59,41 @@ invoca OpenRouter/Gemini e persiste conversas em PostgreSQL.
   - A resposta do modelo é retornada ao cliente sem filtro de conteúdo;
     um output-filter/moderation seria etapa futura.
   - Não há detecção semântica de injection (ex.: classificador dedicado).
+
+## Guardrail de escopo temático (política, religião, etc.)
+
+O serviço responde a temas do escopo (ex.: indicadores econômico-financeiros,
+como a cotação do dólar). Temas divergentes são bloqueados em **duas camadas**:
+
+1. **Pré-filtro determinístico** (`app/services/guardrail.py`): categorias de
+   temas bloqueados — `politica` e `religiao` por padrão, customizáveis via
+   `GUARDRAIL_BLOCKED_TOPICS` (JSON categoria → regexes) — detectadas por regex
+   sobre o texto normalizado (minúsculas, sem acentos), **antes** do cache e do
+   LLM: zero tokens gastos. Expressões do domínio econômico que contêm termos
+   bloqueados ("política monetária/fiscal/cambial/de preços") são exceções e
+   passam normalmente.
+2. **System prompt** (`LLM_SYSTEM_PROMPT`): instrui o modelo a recusar temas
+   fora do escopo que o pré-filtro não capturar.
+
+**Comportamento quando bloqueado:**
+
+- O cliente recebe `200` com `status=blocked`, `provider=guardrail` e a
+  mensagem controlada (`GUARDRAIL_MESSAGE`); `structured.contexto` avisa que a
+  tentativa foi detectada e registrada.
+- **Aviso operacional**: log `WARNING` estruturado
+  (`guardrail: prompt bloqueado category=... user_id=... interaction_id=...`)
+  e métrica `guardrail_blocked_total{category}` em `/metrics` — alarmável por
+  categoria/volume.
+- **Auditoria**: a tentativa é persistida (`status=blocked`,
+  `error_detail="guardrail: tema '...' fora do escopo"`) e aparece no
+  histórico `GET /v1/conversations/{user_id}` — o controle do que foi
+  questionado fica consultável para análise.
+
+**Limitações conhecidas**: filtro por palavras-chave tem cobertura parcial por
+construção (falsos negativos possíveis — mitigados pela camada do system
+prompt — e falsos positivos raros, mitigados pela lista de exceções). Evolução
+natural: classificador semântico dedicado (ex.: modelo leve de moderação) como
+terceira camada. `GUARDRAIL_ENABLED=false` desliga o pré-filtro.
 
 ## IDOR conhecido — `GET /v1/conversations/{user_id}`
 

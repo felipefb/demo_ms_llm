@@ -29,6 +29,12 @@ rate_limit_rejections_total = Counter(
     ["path"],
     registry=registry,
 )
+guardrail_blocked_total = Counter(
+    "guardrail_blocked_total",
+    "Prompts bloqueados pelo guardrail de escopo temático, por categoria.",
+    ["category"],
+    registry=registry,
+)
 http_request_duration_seconds = Histogram(
     "http_request_duration_seconds",
     "HTTP request latency in seconds.",

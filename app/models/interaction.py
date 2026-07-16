@@ -24,6 +24,9 @@ class InteractionStatus(enum.StrEnum):
     pending = "pending"
     completed = "completed"
     failed = "failed"
+    # Bloqueada pelo guardrail de escopo temático (app/services/guardrail.py):
+    # o prompt nunca chegou ao LLM, mas a tentativa fica auditável.
+    blocked = "blocked"
 
 
 class Interaction(Base):

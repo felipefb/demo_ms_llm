@@ -24,6 +24,7 @@ from app.repositories.conversations import InMemoryConversationRepository
 from app.repositories.database import create_engine, create_session_factory
 from app.repositories.postgres import PostgresConversationRepository
 from app.services.cache import ResponseCache
+from app.services.guardrail import TopicGuardrail
 from app.services.resilience import ResilientLLMClient, build_llm_client
 
 logger = logging.getLogger("app.llm")
@@ -56,6 +57,9 @@ async def lifespan(app: FastAPI):
         else:
             app.state.repository = InMemoryConversationRepository()
     app.state.response_cache = ResponseCache(settings.llm_cache_ttl_seconds)
+    # Guardrail de escopo temático: pré-filtro de temas divergentes
+    # (ex.: política, religião) avaliado antes do cache/LLM.
+    app.state.guardrail = TopicGuardrail.from_settings(settings)
     if getattr(app.state, "llm_client", None) is None:
         # OpenRouter -> Gemini chain when keys are configured; offline
         # EchoLLMClient otherwise (dev/test without keys).

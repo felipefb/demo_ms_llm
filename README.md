@@ -9,8 +9,10 @@ inteligência: seleção automática e contínua do melhor modelo por custo/capa
 (com auto-cura), dois modos de resposta (`direct`/`detailed`), busca web opcional
 para dados do dia, saída estruturada normalizada (pronta para virar tabela) e
 cache de respostas com TTL. Tudo seguro (auth por API key, rate limit, validação
-rigorosa), observável (logs estruturados, métricas Prometheus, tracing OTel) e
-empacotado em Docker.
+rigorosa, **guardrail de escopo temático** — temas divergentes como política e
+religião são bloqueados antes do LLM, com tentativa auditável e aviso em
+log/métrica), observável (logs estruturados, métricas Prometheus, tracing OTel)
+e empacotado em Docker.
 
 ---
 
@@ -86,12 +88,14 @@ flowchart LR
     C[Cliente] -->|"POST /v1/chat + X-API-Key<br/>response_mode: direct | detailed"| M["Middlewares<br/>auth · rate limit · request-id"]
     M --> API["FastAPI /v1/chat"]
     API -->|"1. INSERT pending"| DB[("PostgreSQL 16")]
-    API --> K{"2. Cache TTL<br/>(prompt+modo)"}
+    API --> G{"2. Guardrail<br/>escopo temático"}
+    G -->|"tema divergente (ex.: política, religião)<br/>UPDATE blocked · aviso log+métrica"| R0["resposta controlada · 0 tokens"]
+    G -->|ok| K{"3. Cache TTL<br/>(prompt+modo)"}
     K -->|"hit ≤60s"| R["resposta em ms · 0 tokens"]
     K -->|miss| P1["Provider primário*<br/>modelo escolhido pelo seletor"]
     P1 -.->|"falha (429 = fail-fast)"| P2["Provider fallback"]
-    P1 & P2 --> N["3. Normalização JSON<br/>resposta · dados · contexto · fontes"]
-    N -->|"4. UPDATE completed/failed"| DB
+    P1 & P2 --> N["4. Normalização JSON<br/>resposta · dados · contexto · fontes"]
+    N -->|"5. UPDATE completed/failed"| DB
     API --> OBS["Logs JSON · /metrics · traces OTel"]
 ```
 
@@ -100,17 +104,24 @@ flowchart LR
    `request_id` que correlaciona logs, resposta e erros.
 2. **INSERT pending** — o prompt é persistido *antes* da chamada ao LLM. Se tudo
    der errado depois, o dado para análise já está salvo.
-3. **Cache TTL** — prompts idênticos (mesmo modo) em até 60s respondem em
+3. **Guardrail de escopo temático** — temas divergentes do escopo (política e
+   religião por padrão, configurável) são bloqueados **antes** do cache e do
+   LLM: o cliente recebe resposta controlada (`status=blocked`, 0 tokens), a
+   tentativa fica auditável no histórico e gera aviso (WARNING no log +
+   métrica `guardrail_blocked_total{category}`). Expressões do domínio
+   econômico ("política monetária") são exceções e passam normalmente; o
+   system prompt reforça a recusa como segunda camada.
+4. **Cache TTL** — prompts idênticos (mesmo modo) em até 60s respondem em
    milissegundos com 0 tokens gastos. TTL = idade máxima aceitável do dado.
-4. **Cadeia de providers** — o primário é condicional: com busca web ligada, o
+5. **Cadeia de providers** — o primário é condicional: com busca web ligada, o
    Gemini assume (grounding nativo em 1 chamada); sem busca, OpenRouter com o
    menor modelo free elegível. 429 no primário vai direto ao fallback
    (fail-fast, sem retry inútil); erros transitórios ganham retry com backoff +
    jitter; um circuit breaker por provider evita martelar quem está caindo.
-5. **Normalização** — a resposta do LLM é normalizada em um JSON estruturado
+6. **Normalização** — a resposta do LLM é normalizada em um JSON estruturado
    (`resposta`/`dados`/`contexto`/`fontes`) para consumo downstream sem parsing
    frágil.
-6. **Persistência final** — o registro `pending` vira `completed` (ou `failed`,
+7. **Persistência final** — o registro `pending` vira `completed` (ou `failed`,
    com o prompt preservado) e a resposta volta ao cliente com `provider`,
    `usage` e `latency_ms`.
 
@@ -336,8 +347,9 @@ agents/ teams/ shared/  # o time de agentes de IA que construiu o projeto (docum
 
 - **Segurança** ([docs/security.md](docs/security.md)) — auth por `X-API-Key`
   vs hash SHA-256, rate limit por key+IP, limite de body (413), allowlist de
-  modelos, CORS fechado, headers de segurança, validação estrita, imagem
-  Docker non-root.
+  modelos, guardrail de escopo temático (temas divergentes bloqueados antes do
+  LLM, com auditoria e aviso), CORS fechado, headers de segurança, validação
+  estrita, imagem Docker non-root.
 - **Resiliência** ([docs/architecture/04](docs/architecture/04_resiliencia.md)) —
   prompt persistido antes do LLM; timeouts explícitos; retry seletivo com
   backoff + jitter; fail-fast em 429; circuit breaker por provider; fallback;

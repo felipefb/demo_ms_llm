@@ -99,6 +99,20 @@ class PostgresConversationRepository:
             await session.refresh(row)
             return _to_record(row)
 
+    async def mark_blocked(
+        self, record_id: uuid.UUID, response: str, reason: str, latency_ms: float
+    ) -> ConversationRecord:
+        async with self._session_factory() as session:
+            async with session.begin():
+                row = await self._get(session, record_id)
+                row.status = InteractionStatus.blocked
+                row.response = response
+                row.provider = "guardrail"
+                row.error_detail = reason
+                row.latency_ms = round(latency_ms)
+            await session.refresh(row)
+            return _to_record(row)
+
     async def list_by_user(
         self, user_id: str, limit: int, offset: int
     ) -> tuple[list[ConversationRecord], int]:
