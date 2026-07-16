@@ -18,7 +18,7 @@ class ChatRequest(BaseModel):
             "examples": [
                 {
                     "user_id": "user-123",
-                    "prompt": "Explique o que e um circuit breaker.",
+                    "prompt": "Como esta a cotacao do dolar hoje?",
                     "model": "meta-llama/llama-3.3-70b-instruct:free",
                     "metadata": {"channel": "web"},
                 }
@@ -91,8 +91,8 @@ class ChatResponse(BaseModel):
                 {
                     "id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
                     "user_id": "user-123",
-                    "prompt": "Explique o que e um circuit breaker.",
-                    "response": "Um circuit breaker e um padrao de resiliencia...",
+                    "prompt": "Como esta a cotacao do dolar hoje?",
+                    "response": "A PTAX de hoje fechou em R$ 5,07...",
                     "model": "meta-llama/llama-3.3-70b-instruct:free",
                     "provider": "openrouter",
                     "status": "completed",

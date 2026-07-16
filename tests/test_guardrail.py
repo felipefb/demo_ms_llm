@@ -1,7 +1,13 @@
 """Guardrail de escopo temático: unidade (TopicGuardrail) + endpoint /v1/chat."""
 
 from app.core.config import get_settings
-from app.services.guardrail import TopicGuardrail
+from app.services.guardrail import (
+    SCOPE_SENTINEL,
+    TopicGuardrail,
+    build_system_prompt,
+    is_out_of_scope_response,
+)
+from tests.conftest import MockLLMClient, make_client
 
 
 class TestTopicGuardrail:
@@ -88,3 +94,57 @@ class TestChatGuardrailEndpoint:
         assert r.status_code == 200
         assert r.json()["status"] == "completed"
         assert len(mock_llm.calls) == 1
+
+
+class SentinelLLM(MockLLMClient):
+    """Simula o modelo sinalizando tema fora do escopo (camada 2)."""
+
+    async def generate(self, prompt, model=None, mode="direct"):
+        result = await super().generate(prompt, model=model, mode=mode)
+        result.text = f'{{"resposta": "{SCOPE_SENTINEL}"}}'
+        return result
+
+
+class TestEscopoPositivo:
+    OFF_TOPIC = "Como está o tempo agora em SP?"
+
+    def test_system_prompt_declara_escopo_e_sentinela(self, test_settings):
+        prompt = build_system_prompt(get_settings())
+        assert "ESCOPO DO SERVICO" in prompt
+        assert SCOPE_SENTINEL in prompt
+        assert "econômico-financeiros" in prompt
+
+    def test_system_prompt_sem_escopo_quando_desabilitado(self, monkeypatch):
+        monkeypatch.setenv("GUARDRAIL_SCOPE_ENABLED", "false")
+        get_settings.cache_clear()
+        assert SCOPE_SENTINEL not in build_system_prompt(get_settings())
+
+    def test_deteccao_da_sentinela_em_json_e_texto_cru(self):
+        assert is_out_of_scope_response(f'{{"resposta": "{SCOPE_SENTINEL}"}}')
+        assert is_out_of_scope_response(f"  {SCOPE_SENTINEL}. ")
+        assert not is_out_of_scope_response("A PTAX fechou em R$ 5,07.")
+
+    def test_sentinela_do_llm_vira_blocked_auditavel(self, repo):
+        client = make_client(SentinelLLM(), repo)
+        r = client.post("/v1/chat", json={"user_id": "u-fora", "prompt": self.OFF_TOPIC})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "blocked"
+        assert body["provider"] == "guardrail"
+        assert "fora do escopo" in body["response"]
+        assert "fora_do_escopo" in body["structured"]["contexto"]
+        # Tokens gastos na sinalização ficam expostos (transparência de custo).
+        assert body["usage"]["total_tokens"] == 8
+        record = next(iter(repo._items.values()))
+        assert record.status == "blocked"
+        assert "sinalizado pelo LLM" in record.error_detail
+        metrics = client.get("/metrics").text
+        assert 'guardrail_blocked_total{category="fora_do_escopo"}' in metrics
+
+    def test_escopo_desabilitado_devolve_resposta_do_llm(self, repo, monkeypatch):
+        monkeypatch.setenv("GUARDRAIL_SCOPE_ENABLED", "false")
+        get_settings.cache_clear()
+        client = make_client(SentinelLLM(), repo)
+        r = client.post("/v1/chat", json={"user_id": "u1", "prompt": self.OFF_TOPIC})
+        assert r.status_code == 200
+        assert r.json()["status"] == "completed"
