@@ -12,6 +12,7 @@ from app.api.health import router as health_router
 from app.api.v1.chat import router as chat_router
 from app.core.auth import ApiKeyAuthMiddleware
 from app.core.config import get_settings
+from app.core.encoding import Utf8BodyMiddleware
 from app.core.errors import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.metrics import router as metrics_router
@@ -104,7 +105,9 @@ def create_app() -> FastAPI:
     app.state.llm_client = None
 
     # Middleware order (outermost -> innermost at runtime; add_middleware is LIFO):
-    # RequestId -> CORS -> SecurityHeaders -> BodyLimit -> ApiKeyAuth -> RateLimit.
+    # RequestId -> CORS -> SecurityHeaders -> BodyLimit -> ApiKeyAuth -> RateLimit
+    # -> Utf8Body (mais interno: corpo já limitado/autenticado antes do re-encode).
+    app.add_middleware(Utf8BodyMiddleware)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(ApiKeyAuthMiddleware, settings=settings)
     app.add_middleware(BodyLimitMiddleware, max_body_bytes=settings.max_body_bytes)

@@ -44,6 +44,10 @@ invoca OpenRouter/Gemini e persiste conversas em PostgreSQL.
 - Body > `MAX_BODY_BYTES` (padrão 64 KiB) → `413 payload_too_large`
   (checa `Content-Length` e também bodies chunked durante o streaming).
 - `POST/PUT/PATCH` com content-type ≠ `application/json` → `415`.
+- Charset do body normalizado para UTF-8 (`app/core/encoding.py`): `charset=`
+  declarado é respeitado; corpo não-UTF-8 sem charset (PowerShell 5.1, curl em
+  terminal Windows) é re-encodado de cp1252/latin-1 — sem isso, um prompt com
+  acento virava `400` antes de qualquer validação ou guardrail.
 - Schemas Pydantic com `extra="forbid"`; prompt 1–4000 chars não-branco;
   `user_id` ≤ 128; metadata ≤ 20 chaves / 4096 bytes serializados.
 

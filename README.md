@@ -241,9 +241,11 @@ experimentar); fora de dev o hash é obrigatório.
 
 - **Mudou o `.env`? Recrie o container**: `docker compose up -d --build` — um
   simples restart pode não repassar as envs novas.
-- **PowerShell 5.1 e acentos**: rode
-  `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` uma vez, ou use
-  prompts sem acento no curl (terminais não-UTF-8 corrompem o body → 400).
+- **PowerShell 5.1 e acentos**: resolvido no serviço — clientes que enviam o
+  body em cp1252/latin-1 (`Invoke-RestMethod` do PS 5.1, curl em terminal
+  não-UTF-8) funcionam normalmente; o corpo é detectado e re-encodado para
+  UTF-8 na borda (`app/core/encoding.py`), então acentos chegam íntegros ao
+  guardrail e ao LLM (antes, viravam um 400 genérico).
 - **O modelo do Gemini precisa existir no catálogo da SUA key**: confira com
   `GET https://generativelanguage.googleapis.com/v1beta/models` (header
   `x-goog-api-key`) e ajuste `GEMINI_MODEL=` se necessário — com
