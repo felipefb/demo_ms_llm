@@ -34,6 +34,7 @@ from app.core.metrics import (
     set_breaker_state,
 )
 from app.core.tracing import start_span
+from app.services.guardrail import build_system_prompt
 from app.services.llm import EchoLLMClient, LLMClient, LLMResult
 from app.services.model_selector import ModelSelector
 from app.services.providers import (
@@ -242,7 +243,7 @@ def build_llm_client(settings: Settings, http_client: httpx.AsyncClient) -> LLMC
                 base_url=settings.openrouter_base_url,
                 default_model=settings.openrouter_model,
                 timeout_seconds=settings.llm_timeout_seconds,
-                system_prompt=settings.llm_system_prompt,
+                system_prompt=build_system_prompt(settings),
                 web_search=settings.llm_web_search,
                 direct_model=settings.openrouter_model_direct,
                 direct_max_tokens=settings.llm_direct_max_tokens,
@@ -258,7 +259,7 @@ def build_llm_client(settings: Settings, http_client: httpx.AsyncClient) -> LLMC
                 base_url=settings.gemini_base_url,
                 default_model=settings.gemini_model,
                 timeout_seconds=settings.llm_timeout_seconds,
-                system_prompt=settings.llm_system_prompt,
+                system_prompt=build_system_prompt(settings),
                 web_search=settings.llm_web_search,
                 direct_model=settings.gemini_model_direct,
                 direct_max_tokens=settings.llm_direct_max_tokens,

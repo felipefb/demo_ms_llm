@@ -9,9 +9,11 @@ inteligência: seleção automática e contínua do melhor modelo por custo/capa
 (com auto-cura), dois modos de resposta (`direct`/`detailed`), busca web opcional
 para dados do dia, saída estruturada normalizada (pronta para virar tabela) e
 cache de respostas com TTL. Tudo seguro (auth por API key, rate limit, validação
-rigorosa, **guardrail de escopo temático** — temas divergentes como política e
-religião são bloqueados antes do LLM, com tentativa auditável e aviso em
-log/métrica), observável (logs estruturados, métricas Prometheus, tracing OTel)
+rigorosa, **guardrail de escopo temático em duas camadas** — temas sensíveis
+como política e religião são bloqueados antes do LLM, e qualquer outro tema
+fora do escopo econômico-financeiro, como previsão do tempo, é recusado pela
+camada semântica; tudo com tentativa auditável e aviso em log/métrica),
+observável (logs estruturados, métricas Prometheus, tracing OTel)
 e empacotado em Docker.
 
 ---
@@ -104,13 +106,16 @@ flowchart LR
    `request_id` que correlaciona logs, resposta e erros.
 2. **INSERT pending** — o prompt é persistido *antes* da chamada ao LLM. Se tudo
    der errado depois, o dado para análise já está salvo.
-3. **Guardrail de escopo temático** — temas divergentes do escopo (política e
-   religião por padrão, configurável) são bloqueados **antes** do cache e do
-   LLM: o cliente recebe resposta controlada (`status=blocked`, 0 tokens), a
-   tentativa fica auditável no histórico e gera aviso (WARNING no log +
-   métrica `guardrail_blocked_total{category}`). Expressões do domínio
-   econômico ("política monetária") são exceções e passam normalmente; o
-   system prompt reforça a recusa como segunda camada.
+3. **Guardrail de escopo temático (duas camadas)** — o escopo do serviço é
+   positivo e configurável (`GUARDRAIL_SCOPE`; default: indicadores
+   econômico-financeiros). Camada 1: temas sensíveis conhecidos (política e
+   religião por padrão) são bloqueados por pré-filtro **antes** do cache e do
+   LLM (0 tokens); expressões do domínio econômico ("política monetária") são
+   exceções. Camada 2: o system prompt declara o escopo e o modelo sinaliza
+   qualquer outro tema divergente (previsão do tempo, esportes...) com a
+   sentinela `FORA_DO_ESCOPO`, convertida no mesmo bloqueio. Nas duas: resposta
+   controlada (`status=blocked`), tentativa auditável no histórico e aviso
+   (WARNING no log + métrica `guardrail_blocked_total{category}`).
 4. **Cache TTL** — prompts idênticos (mesmo modo) em até 60s respondem em
    milissegundos com 0 tokens gastos. TTL = idade máxima aceitável do dado.
 5. **Cadeia de providers** — o primário é condicional: com busca web ligada, o
@@ -349,9 +354,10 @@ agents/ teams/ shared/  # o time de agentes de IA que construiu o projeto (docum
 
 - **Segurança** ([docs/security.md](docs/security.md)) — auth por `X-API-Key`
   vs hash SHA-256, rate limit por key+IP, limite de body (413), allowlist de
-  modelos, guardrail de escopo temático (temas divergentes bloqueados antes do
-  LLM, com auditoria e aviso), CORS fechado, headers de segurança, validação
-  estrita, imagem Docker non-root.
+  modelos, guardrail de escopo temático em duas camadas (temas sensíveis
+  bloqueados antes do LLM + escopo positivo semântico via sentinela, com
+  auditoria e aviso), CORS fechado, headers de segurança, validação estrita,
+  imagem Docker non-root.
 - **Resiliência** ([docs/architecture/04](docs/architecture/04_resiliencia.md)) —
   prompt persistido antes do LLM; timeouts explícitos; retry seletivo com
   backoff + jitter; fail-fast em 429; circuit breaker por provider; fallback;

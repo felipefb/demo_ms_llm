@@ -1,20 +1,26 @@
-"""Guardrail de escopo temático: bloqueia prompts sobre temas divergentes.
+"""Guardrail de escopo temático: só o escopo do serviço é respondido.
 
-O serviço responde a temas do escopo (ex.: indicadores econômico-financeiros,
-como a cotação do dólar). Temas divergentes — política e religião por padrão —
+O escopo do serviço é POSITIVO e configurável (GUARDRAIL_SCOPE; default:
+indicadores econômico-financeiros, ex.: cotação do dólar). Prompts fora dele
 são bloqueados por duas camadas complementares:
 
-1. Pré-filtro determinístico (este módulo): regex por categoria sobre o texto
+1. Pré-filtro determinístico (TopicGuardrail): regex por categoria de temas
+   sensíveis conhecidos (política, religião por padrão) sobre o texto
    normalizado (minúsculas, sem acentos), avaliado ANTES do cache e do LLM —
-   zero tokens gastos. A tentativa é persistida com status=blocked (auditável
-   em `GET /v1/conversations`), gera WARNING no log estruturado e incrementa a
-   métrica `guardrail_blocked_total{category}`.
-2. System prompt (LLM_SYSTEM_PROMPT) instrui o modelo a recusar temas fora do
-   escopo que o pré-filtro não capturar — keywords têm cobertura parcial por
-   construção (limitação documentada em docs/security.md).
+   zero tokens gastos.
+2. Escopo positivo semântico (build_system_prompt + is_out_of_scope_response):
+   o system prompt declara o escopo e instrui o modelo a responder com a
+   sentinela FORA_DO_ESCOPO para qualquer tema divergente que o pré-filtro
+   não conheça (previsão do tempo, esportes, receitas...). O endpoint detecta
+   a sentinela e converte em bloqueio — mesma resposta controlada.
 
-Categorias customizáveis via GUARDRAIL_BLOCKED_TOPICS (JSON categoria->regexes);
-GUARDRAIL_ENABLED=false desliga o pré-filtro (a camada do system prompt fica).
+Nas duas camadas a tentativa é persistida com status=blocked (auditável em
+`GET /v1/conversations`), gera WARNING no log estruturado e incrementa a
+métrica `guardrail_blocked_total{category}`.
+
+Configuração: GUARDRAIL_BLOCKED_TOPICS (JSON categoria->regexes) customiza o
+pré-filtro; GUARDRAIL_ENABLED=false o desliga. GUARDRAIL_SCOPE redefine o
+escopo; GUARDRAIL_SCOPE_ENABLED=false desliga a camada semântica.
 """
 
 import re
@@ -63,6 +69,33 @@ def _normalize(text: str) -> str:
     """Minúsculas + remoção de acentos ("Religião" -> "religiao")."""
     decomposed = unicodedata.normalize("NFD", text.lower())
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+# Sentinela que o modelo devolve quando o prompt foge do escopo declarado.
+SCOPE_SENTINEL = "FORA_DO_ESCOPO"
+
+
+def build_system_prompt(settings: Settings) -> str:
+    """System prompt efetivo: base + declaração de escopo com sentinela.
+
+    A cláusula de escopo é a 2ª camada do guardrail: cobre temas divergentes
+    imprevisíveis (tempo, esportes...) que o pré-filtro por regex não conhece.
+    """
+    prompt = settings.llm_system_prompt
+    if settings.guardrail_scope_enabled:
+        prompt += (
+            f" ESCOPO DO SERVICO: {settings.guardrail_scope}. "
+            "Se a mensagem do usuario estiver fora desse escopo (ex.: previsao "
+            "do tempo, esportes, entretenimento, saude, conselhos pessoais, "
+            "politica, religiao), NAO responda ao tema: devolva o campo "
+            f'"resposta" contendo exatamente {SCOPE_SENTINEL}, sem mais nada.'
+        )
+    return prompt
+
+
+def is_out_of_scope_response(text: str) -> bool:
+    """Detecta a sentinela na resposta do modelo (em JSON ou texto cru)."""
+    return SCOPE_SENTINEL.lower() in _normalize(text)
 
 
 @dataclass(frozen=True)

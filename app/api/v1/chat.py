@@ -20,12 +20,41 @@ from app.schemas.chat import (
 )
 from app.services.cache import ResponseCache
 from app.services.formatting import parse_structured_answer
-from app.services.guardrail import TopicGuardrail
+from app.services.guardrail import TopicGuardrail, is_out_of_scope_response
 from app.services.llm import LLMClient
 
 logger = logging.getLogger("app.guardrail")
 
 router = APIRouter(prefix="/v1", tags=["chat"])
+
+
+def _blocked_chat_response(
+    record,
+    settings: Settings,
+    category: str,
+    latency_ms: float,
+    usage: TokenUsage | None = None,
+) -> ChatResponse:
+    """Resposta controlada para prompt bloqueado pelo guardrail (qualquer camada)."""
+    return ChatResponse(
+        id=record.id,
+        user_id=record.user_id,
+        prompt=record.prompt,
+        response=record.response,
+        structured=StructuredResponse(
+            resposta=settings.guardrail_message,
+            contexto=(
+                "Aviso: tentativa de tema fora do escopo detectada "
+                f"(categoria: {category}). A tentativa foi registrada."
+            ),
+        ),
+        model=None,
+        provider=record.provider,
+        status=record.status,
+        usage=usage,
+        timestamp=record.updated_at,
+        latency_ms=latency_ms,
+    )
 
 
 def _validate_model(model: str | None, settings: Settings) -> None:
@@ -74,10 +103,10 @@ async def chat(
         metadata=payload.metadata,
     )
 
-    # 1.5. Guardrail de escopo temático: temas divergentes (ex.: política,
-    # religião) recebem resposta controlada SEM tocar cache/LLM. A tentativa
-    # fica auditável (status=blocked) e gera aviso: WARNING no log estruturado
-    # + métrica guardrail_blocked_total{category}.
+    # 1.5. Guardrail camada 1 — pré-filtro de temas sensíveis conhecidos
+    # (ex.: política, religião): resposta controlada SEM tocar cache/LLM.
+    # A tentativa fica auditável (status=blocked) e gera aviso: WARNING no
+    # log estruturado + métrica guardrail_blocked_total{category}.
     blocked = guardrail.check(payload.prompt)
     if blocked is not None:
         guardrail_blocked_total.labels(category=blocked.category).inc()
@@ -94,25 +123,7 @@ async def chat(
             reason=f"guardrail: tema '{blocked.category}' fora do escopo",
             latency_ms=0.0,
         )
-        return ChatResponse(
-            id=record.id,
-            user_id=record.user_id,
-            prompt=record.prompt,
-            response=record.response,
-            structured=StructuredResponse(
-                resposta=settings.guardrail_message,
-                contexto=(
-                    "Aviso: tentativa de tema fora do escopo detectada "
-                    f"(categoria: {blocked.category}). A tentativa foi registrada."
-                ),
-            ),
-            model=None,
-            provider=record.provider,
-            status=record.status,
-            usage=None,
-            timestamp=record.updated_at,
-            latency_ms=0.0,
-        )
+        return _blocked_chat_response(record, settings, blocked.category, latency_ms=0.0)
 
     # 2. Cache com TTL: prompts idênticos na janela reutilizam a resposta —
     # latência de ms e zero tokens (performance com custo controlado).
@@ -140,6 +151,37 @@ async def chat(
                 status_code=503,
             ) from exc
     latency_ms = round((time.perf_counter() - start) * 1000, 2)
+
+    # 2.5. Guardrail camada 2 — escopo positivo: o system prompt declara o
+    # escopo do serviço e o LLM sinaliza qualquer tema divergente (tempo,
+    # esportes...) com a sentinela FORA_DO_ESCOPO; o serviço converte em
+    # bloqueio auditável com o mesmo aviso. Os tokens gastos ficam expostos
+    # em usage; repetições do prompt caem no cache (0 tokens).
+    if settings.guardrail_scope_enabled and is_out_of_scope_response(result.text):
+        guardrail_blocked_total.labels(category="fora_do_escopo").inc()
+        logger.warning(
+            "guardrail: prompt bloqueado category=fora_do_escopo "
+            "(sentinela do LLM) user_id=%s interaction_id=%s",
+            payload.user_id,
+            record.id,
+        )
+        record = await repo.mark_blocked(
+            record.id,
+            response=settings.guardrail_message,
+            reason="guardrail: tema fora do escopo (sinalizado pelo LLM)",
+            latency_ms=latency_ms,
+        )
+        return _blocked_chat_response(
+            record,
+            settings,
+            "fora_do_escopo",
+            latency_ms=latency_ms,
+            usage=TokenUsage(
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                total_tokens=result.total_tokens,
+            ),
+        )
 
     # 3. Normaliza a resposta no esquema estruturado (fallback seguro para
     # texto cru) e persiste a frase direta como response para analytics.

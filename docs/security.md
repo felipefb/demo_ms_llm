@@ -15,7 +15,7 @@ invoca OpenRouter/Gemini e persiste conversas em PostgreSQL.
 | Prompt injection | Instruções maliciosas no prompt do usuário | System prompt fixo definido no servidor (`LLM_SYSTEM_PROMPT`); prompt do usuário sempre como mensagem `user` separada (nunca concatenado a instruções); limite de tamanho |
 | SQL injection | Input do usuário em queries | Exclusivamente ORM SQLAlchemy com bound params; zero interpolação de SQL |
 | Model abuse | Cliente forçando modelos caros/não homologados | Allowlist `ALLOWED_MODELS`; sem allowlist, cliente não pode sobrescrever o modelo |
-| Uso fora do escopo | Prompts sobre temas divergentes (política, religião) | Guardrail de escopo temático: pré-filtro determinístico antes do LLM + reforço no system prompt; tentativa auditável (`status=blocked`), aviso em log WARNING + métrica |
+| Uso fora do escopo | Prompts sobre qualquer tema divergente (política, religião, tempo, esportes...) | Guardrail em duas camadas: pré-filtro determinístico antes do LLM + escopo positivo semântico (sentinela `FORA_DO_ESCOPO`); tentativa auditável (`status=blocked`), aviso em log WARNING + métrica |
 | Ataques via browser | Clickjacking, sniffing, CORS aberto | Headers de segurança em toda resposta (nosniff, DENY, CSP `default-src 'none'`, no-referrer, no-store); CORS fechado por padrão (`CORS_ALLOWED_ORIGINS=[]`) |
 
 ## Autenticação
@@ -66,18 +66,26 @@ invoca OpenRouter/Gemini e persiste conversas em PostgreSQL.
 
 ## Guardrail de escopo temático (política, religião, etc.)
 
-O serviço responde a temas do escopo (ex.: indicadores econômico-financeiros,
-como a cotação do dólar). Temas divergentes são bloqueados em **duas camadas**:
+O escopo do serviço é **positivo e configurável** (`GUARDRAIL_SCOPE`; default:
+indicadores econômico-financeiros — câmbio, juros, inflação, mercado). Tudo
+fora dele é bloqueado em **duas camadas**:
 
-1. **Pré-filtro determinístico** (`app/services/guardrail.py`): categorias de
-   temas bloqueados — `politica` e `religiao` por padrão, customizáveis via
+1. **Pré-filtro determinístico** (`TopicGuardrail`,
+   `app/services/guardrail.py`): categorias de temas sensíveis conhecidos —
+   `politica` e `religiao` por padrão, customizáveis via
    `GUARDRAIL_BLOCKED_TOPICS` (JSON categoria → regexes) — detectadas por regex
    sobre o texto normalizado (minúsculas, sem acentos), **antes** do cache e do
    LLM: zero tokens gastos. Expressões do domínio econômico que contêm termos
    bloqueados ("política monetária/fiscal/cambial/de preços") são exceções e
    passam normalmente.
-2. **System prompt** (`LLM_SYSTEM_PROMPT`): instrui o modelo a recusar temas
-   fora do escopo que o pré-filtro não capturar.
+2. **Escopo positivo semântico** (`build_system_prompt` +
+   `is_out_of_scope_response`): o system prompt declara o escopo e instrui o
+   modelo a responder com a sentinela `FORA_DO_ESCOPO` para **qualquer** tema
+   divergente que o pré-filtro não conheça (previsão do tempo, esportes,
+   receitas, saúde...). O endpoint detecta a sentinela e converte no mesmo
+   bloqueio auditável — os tokens gastos na sinalização ficam expostos em
+   `usage`, e repetições do prompt caem no cache (0 tokens).
+   `GUARDRAIL_SCOPE_ENABLED=false` desliga esta camada.
 
 **Comportamento quando bloqueado:**
 
@@ -93,11 +101,13 @@ como a cotação do dólar). Temas divergentes são bloqueados em **duas camadas
   histórico `GET /v1/conversations/{user_id}` — o controle do que foi
   questionado fica consultável para análise.
 
-**Limitações conhecidas**: filtro por palavras-chave tem cobertura parcial por
-construção (falsos negativos possíveis — mitigados pela camada do system
-prompt — e falsos positivos raros, mitigados pela lista de exceções). Evolução
-natural: classificador semântico dedicado (ex.: modelo leve de moderação) como
-terceira camada. `GUARDRAIL_ENABLED=false` desliga o pré-filtro.
+**Limitações conhecidas**: o filtro por palavras-chave tem cobertura parcial
+por construção (mitigado pela camada 2, que é semântica); a camada 2 depende
+do modelo seguir a instrução da sentinela (mitigado pela camada 1 nos temas
+sensíveis conhecidos, que nunca chegam ao LLM). O cliente echo offline
+(dev/test sem keys) não aplica a camada 2 — só a 1. Evolução natural:
+classificador dedicado (modelo leve de moderação) como camada intermediária.
+`GUARDRAIL_ENABLED=false` desliga o pré-filtro.
 
 ## IDOR conhecido — `GET /v1/conversations/{user_id}`
 
