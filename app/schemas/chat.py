@@ -119,7 +119,7 @@ class ChatResponse(BaseModel):
     )
     model: str | None
     provider: str | None
-    status: Literal["pending", "completed", "failed"]
+    status: Literal["pending", "completed", "failed", "blocked"]
     usage: TokenUsage | None = None
     timestamp: datetime
     latency_ms: float
@@ -143,7 +143,7 @@ class ConversationItem(BaseModel):
     response: str | None
     model: str | None
     provider: str | None
-    status: Literal["pending", "completed", "failed"]
+    status: Literal["pending", "completed", "failed", "blocked"]
     timestamp: datetime
 
 

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal, Protocol
 
-Status = Literal["pending", "completed", "failed"]
+Status = Literal["pending", "completed", "failed", "blocked"]
 
 
 @dataclass
@@ -62,6 +62,10 @@ class ConversationRepository(Protocol):
 
     async def mark_failed(
         self, record_id: uuid.UUID, error_detail: str, latency_ms: float
+    ) -> ConversationRecord: ...
+
+    async def mark_blocked(
+        self, record_id: uuid.UUID, response: str, reason: str, latency_ms: float
     ) -> ConversationRecord: ...
 
     async def list_by_user(
@@ -129,6 +133,18 @@ class InMemoryConversationRepository:
         record = self._get(record_id)
         record.status = "failed"
         record.error_detail = error_detail
+        record.latency_ms = round(latency_ms)
+        record.updated_at = datetime.now(UTC)
+        return record
+
+    async def mark_blocked(
+        self, record_id: uuid.UUID, response: str, reason: str, latency_ms: float
+    ) -> ConversationRecord:
+        record = self._get(record_id)
+        record.status = "blocked"
+        record.response = response
+        record.provider = "guardrail"
+        record.error_detail = reason
         record.latency_ms = round(latency_ms)
         record.updated_at = datetime.now(UTC)
         return record
