@@ -49,6 +49,15 @@ Cada agente é uma unidade autocontida em `agents/<id>/`:
   um board onde os agentes registram entregas, pareceres, correções e vereditos,
   rodada a rodada.
 
+**Para ser preciso sobre o que isso é (e o que não é)**: esses arquivos são a
+**especificação declarativa** que cada sessão de agente (Claude Code) recebeu e
+seguiu sob revisão humana — o contrato, o prompt e o gate de cada etapa. Eles
+**não são executados por um motor de orquestração em runtime** e não há
+aprendizado automático entre execuções: quem interpretou os contratos foram
+sessões de IA conduzidas e revisadas pelo autor, e a "memória" do processo são
+os boards versionados — trilha de auditoria, não memória viva. O serviço em
+produção (`app/`) não usa nada desta pasta.
+
 ### Como trabalharam na prática
 
 - **Builders + validadores com validação cruzada**: em cada fase, os agentes
@@ -75,9 +84,12 @@ Cada agente é uma unidade autocontida em `agents/<id>/`:
 | **Bugs de produção viraram testes de regressão no mesmo ciclo**: durante a validação com keys reais, o seletor escolheu um modelo de imagem para texto (400), modelos reasoning devolveram `content: null` (500) e a truncagem por teto vazou raciocínio como resposta — cada um foi corrigido com teste de regressão na mesma rodada | [`docs/RELATORIO_RESULTADOS.md`](docs/RELATORIO_RESULTADOS.md) |
 | **Rastreabilidade total**: cada decisão (até um `ignore = ["B008"]` no lint) tem autor, rodada e justificativa nos boards — dá para reconstruir o porquê de cada linha | `shared/memory/fase1..6_board.md` e `fase7_relatorio_final.md` |
 
-O resultado medido: 114 testes, cobertura ≥95%, lint/tipos/segurança limpos, e
-um caminho comum de ~8s para dado real do dia (0,07 ms em cache hit) — detalhes
-em [`docs/RELATORIO_RESULTADOS.md`](docs/RELATORIO_RESULTADOS.md).
+O resultado hoje: 142 testes (138 executados + 4 de integração que pulam sem
+Docker), cobertura ~94% (gate 80% no CI), lint/tipos/segurança limpos. Na rodada
+de validação com keys reais, o caminho comum para dado do dia ficou em ~8s
+(0,07 ms em cache hit) — detalhes e evidências da rodada em
+[`docs/RELATORIO_RESULTADOS.md`](docs/RELATORIO_RESULTADOS.md) (snapshot da
+época; os números de testes cresceram depois com guardrail e encoding).
 
 ---
 
@@ -320,8 +332,8 @@ Stack de observabilidade opcional (Prometheus, Grafana, Jaeger):
 
 ```bash
 make install     # deps de runtime + dev
-make test        # pytest (114 testes, sem rede)
-make cov         # cobertura (~95%, gate 80%)
+make test        # pytest (142 testes, sem rede; 4 de integração exigem Docker)
+make cov         # cobertura (~94%, gate 80% no CI)
 make lint        # ruff check + ruff format --check
 make typecheck   # mypy app
 make security    # bandit + pip-audit
